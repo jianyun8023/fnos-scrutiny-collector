@@ -35,7 +35,7 @@ jobs:
             echo "::notice::Tag ${{ steps.upstream.outputs.tag }} not found, will create"
           fi
 
-      - name: Create tag and trigger release
+      - name: Create tag
         if: steps.check.outputs.exists == 'false'
         run: |
           TAG="${{ steps.upstream.outputs.tag }}"
@@ -43,4 +43,16 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag "${TAG}"
           git push origin "${TAG}"
-          echo "::notice::Created and pushed tag ${TAG}, release workflow will be triggered by push event"
+          echo "::notice::Created and pushed tag ${TAG}"
+
+      # GITHUB_TOKEN 推送的 tag 不会触发其他 workflow 的 push 事件，
+      # 必须通过 workflow_dispatch 显式触发 release workflow
+      - name: Trigger release workflow
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ steps.upstream.outputs.tag }}"
+          VERSION="${VERSION#v}"
+          gh workflow run release.yml -f scrutiny_version="${VERSION}"
+          echo "::notice::Triggered release workflow for version ${VERSION}"
