@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# Scrutiny Collector 卸载回调脚本
+
+LOG_FILE="${TRIM_PKGVAR}/info.log"
+CRON_TAG="scrutiny-collector-${TRIM_APPNAME}"
+
+log_msg() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - [uninstall] $1" >> ${LOG_FILE}
+}
+
+log_msg "Uninstall callback started"
+
+# 确保 cron 任务已清理
+crontab -l 2>/dev/null | grep -v "# ${CRON_TAG}" | crontab - 2>/dev/null
+log_msg "Cron job cleaned up"
+
+# 根据用户选择处理数据
+DATA_ACTION="${wizard_data_action:-keep}"
+if [ "$DATA_ACTION" = "delete" ]; then
+    log_msg "Deleting all data..."
+    rm -rf "${TRIM_PKGVAR}"
+    # 数据目录已删除，不再写日志
+    exit 0
+fi
+
+log_msg "Uninstall callback completed"

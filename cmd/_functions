@@ -1,0 +1,87 @@
+#!/bin/bash
+# Scrutiny Collector 共享函数库
+# 由各 cmd/ 生命周期脚本 source 引用，不直接执行
+
+# ── jq 依赖检查 ──
+# 用法: require_jq （失败直接 exit 1）
+require_jq() {
+    if ! command -v jq >/dev/null 2>&1; then
+        echo "jq 未安装，Scrutiny Collector 无法运行，请先安装 jq" > "${TRIM_TEMP_LOGFILE}"
+        exit 1
+    fi
+}
+
+# ── cron 间隔转 cron 表达式 ──
+# 用法: CRON_SCHEDULE=$(interval_to_cron "15")
+interval_to_cron() {
+    case "$1" in
+        15)   echo "*/15 * * * *" ;;
+        30)   echo "*/30 * * * *" ;;
+        60)   echo "0 * * * *" ;;
+        360)  echo "0 */6 * * *" ;;
+        720)  echo "0 */12 * * *" ;;
+        1440) echo "0 0 * * *" ;;
+        *)    echo "*/15 * * * *" ;;
+    esac
+}
+
+# ── 从 JSON 文件读取值 ──
+# 用法: val=$(read_json_value "file.json" "key" "default")
+read_json_value() {
+    local file="$1" key="$2" default="$3"
+    if [ ! -f "$file" ]; then
+        echo "$default"
+        return
+    fi
+    local val
+    val=$(jq -r ".$key // empty" "$file" 2>/dev/null)
+    echo "${val:-$default}"
+}
+
+# ── 写入 settings.json（jq 安全序列化）──
+# 用法: write_settings "/path/to/settings.json" "$api" "$schedule" "$interval" "$host"
+write_settings() {
+    local file="$1"
+    jq -n \
+        --arg api_endpoint "$2" \
+        --arg cron_schedule "$3" \
+        --arg cron_interval "$4" \
+        --arg host_id "$5" \
+        '{
+            api_endpoint: $api_endpoint,
+            cron_schedule: $cron_schedule,
+            cron_interval: $cron_interval,
+            host_id: $host_id
+        }' > "$file"
+}
+
+# ── URL 安全检查（防止 cron 命令注入）──
+# 用法: API=$(sanitize_url "$input") || API="http://localhost:8080"
+sanitize_url() {
+    local url="$1"
+    # 去除首尾空白
+    url="$(echo "$url" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    [ -z "$url" ] && return 1
+    # 拒绝包含 shell 元字符的输入
+    if echo "$url" | grep -qE '[;|`]|\$\(|\$\{'; then
+        return 1
+    fi
+    echo "$url"
+}
+
+# ── 日志轮转（超过阈值时保留最后 500 行）──
+# 用法: rotate_log "/path/to/info.log" [max_bytes]
+rotate_log() {
+    local log_file="$1"
+    local max_bytes="${2:-1048576}"  # 默认 1MB
+
+    [ ! -f "$log_file" ] && return 0
+
+    local size
+    size=$(stat -c%s "$log_file" 2>/dev/null || wc -c < "$log_file" 2>/dev/null || echo 0)
+
+    if [ "$size" -gt "$max_bytes" ] 2>/dev/null; then
+        tail -n 500 "$log_file" > "${log_file}.rotate_tmp" 2>/dev/null \
+            && mv "${log_file}.rotate_tmp" "$log_file" 2>/dev/null
+    fi
+}

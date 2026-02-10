@@ -1,0 +1,152 @@
+#!/bin/bash
+
+# Scrutiny Collector - 生命周期管理脚本
+# 通过 cron 定时调度 scrutiny-collector-metrics 采集硬盘 S.M.A.R.T 数据
+
+source "$(dirname "$0")/_functions"
+
+LOG_FILE="${TRIM_PKGVAR}/info.log"
+SETTINGS_FILE="${TRIM_PKGVAR}/settings.json"
+COLLECTOR_BIN="${TRIM_APPDEST}/bin/scrutiny-collector-metrics"
+CRON_TAG="scrutiny-collector-${TRIM_APPNAME}"
+
+log_msg() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "${LOG_FILE}"
+}
+
+# 从 settings.json 读取配置
+read_settings() {
+    API_ENDPOINT=$(read_json_value "${SETTINGS_FILE}" "api_endpoint" "http://localhost:8080")
+    CRON_SCHEDULE=$(read_json_value "${SETTINGS_FILE}" "cron_schedule" "*/15 * * * *")
+    HOST_ID=$(read_json_value "${SETTINGS_FILE}" "host_id" "fnOS")
+
+    # URL 安全检查
+    API_ENDPOINT=$(sanitize_url "${API_ENDPOINT}") || {
+        log_msg "WARNING: API endpoint contains invalid characters, using default"
+        API_ENDPOINT="http://localhost:8080"
+    }
+}
+
+# 检查环境
+check_env() {
+    require_jq
+
+    if [ ! -f "${COLLECTOR_BIN}" ]; then
+        log_msg "ERROR: Collector binary not found: ${COLLECTOR_BIN}"
+        echo "Scrutiny Collector 可执行文件缺失: ${COLLECTOR_BIN}" > "${TRIM_TEMP_LOGFILE}"
+        exit 1
+    fi
+
+    if [ ! -x "${COLLECTOR_BIN}" ]; then
+        chmod +x "${COLLECTOR_BIN}" 2>/dev/null
+        if [ ! -x "${COLLECTOR_BIN}" ]; then
+            log_msg "ERROR: Cannot set execute permission on: ${COLLECTOR_BIN}"
+            echo "无法设置 Collector 执行权限" > "${TRIM_TEMP_LOGFILE}"
+            exit 1
+        fi
+    fi
+
+    if ! command -v smartctl >/dev/null; then
+        log_msg "ERROR: smartctl not found"
+        echo "smartctl 未安装，请先安装 smartmontools" > "${TRIM_TEMP_LOGFILE}"
+        exit 1
+    fi
+}
+
+# 安装 cron 任务
+install_cron() {
+    read_settings
+    remove_cron
+
+    # cron 执行时 PATH 极简，需显式设置以找到 smartctl（通常在 /usr/sbin）
+    local cron_cmd="${CRON_SCHEDULE} PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin ${COLLECTOR_BIN} run --api-endpoint \"${API_ENDPOINT}\" --host-id \"${HOST_ID}\" >> \"${LOG_FILE}\" 2>&1 # ${CRON_TAG}"
+
+    (crontab -l 2>/dev/null; echo "${cron_cmd}") | crontab -
+    log_msg "Cron job installed: schedule=${CRON_SCHEDULE}, endpoint=${API_ENDPOINT}"
+}
+
+# 移除 cron 任务
+remove_cron() {
+    crontab -l 2>/dev/null | grep -v "# ${CRON_TAG}" | crontab - 2>/dev/null
+    log_msg "Cron job removed"
+}
+
+# 检查 cron 任务是否存在
+check_cron() {
+    crontab -l 2>/dev/null | grep -q "# ${CRON_TAG}"
+}
+
+# 终止正在运行的 collector 进程
+kill_collector() {
+    local pids
+    pids=$(pgrep -f "scrutiny-collector-metrics.*run.*--api-endpoint" 2>/dev/null)
+    if [ -n "$pids" ]; then
+        echo "$pids" | xargs kill 2>/dev/null
+        log_msg "Killed running collector processes: ${pids}"
+        sleep 1
+        # 强制终止仍在运行的进程
+        pids=$(pgrep -f "scrutiny-collector-metrics.*run.*--api-endpoint" 2>/dev/null)
+        if [ -n "$pids" ]; then
+            echo "$pids" | xargs kill -9 2>/dev/null
+            log_msg "Force killed remaining processes: ${pids}"
+        fi
+    fi
+}
+
+# 立即执行一次采集
+run_once() {
+    read_settings
+    log_msg "Running collector once..."
+    "${COLLECTOR_BIN}" run --api-endpoint "${API_ENDPOINT}" --host-id "${HOST_ID}" >> "${LOG_FILE}" 2>&1 &
+}
+
+start_app() {
+    if check_cron; then
+        log_msg "Cron job already exists"
+        return 0
+    fi
+
+    check_env
+
+    # 启动时做日志轮转（超过 1MB 截断）
+    rotate_log "${LOG_FILE}" 1048576
+
+    log_msg "Starting Scrutiny Collector..."
+
+    install_cron
+
+    # 首次启动时立即采集一次
+    run_once
+
+    if check_cron; then
+        log_msg "Scrutiny Collector started successfully"
+        return 0
+    else
+        log_msg "ERROR: Failed to install cron job"
+        echo "Cron 任务安装失败" > "${TRIM_TEMP_LOGFILE}"
+        return 1
+    fi
+}
+
+stop_app() {
+    log_msg "Stopping Scrutiny Collector..."
+    remove_cron
+    kill_collector
+    log_msg "Scrutiny Collector stopped"
+    return 0
+}
+
+case $1 in
+start)
+    start_app
+    ;;
+stop)
+    stop_app
+    ;;
+status)
+    if check_cron; then exit 0; else exit 3; fi
+    ;;
+*)
+    exit 1
+    ;;
+esac

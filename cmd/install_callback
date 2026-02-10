@@ -1,0 +1,53 @@
+#!/bin/bash
+
+# Scrutiny Collector 安装回调脚本
+# 处理安装向导输入，初始化配置
+
+source "$(dirname "$0")/_functions"
+
+LOG_FILE="${TRIM_PKGVAR}/info.log"
+SETTINGS_FILE="${TRIM_PKGVAR}/settings.json"
+
+log_msg() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - [install] $1" >> ${LOG_FILE}
+}
+
+# 创建必要的目录
+mkdir -p "${TRIM_PKGVAR}"
+
+# jq 检查
+require_jq
+
+log_msg "Install callback started"
+
+# 读取安装向导输入
+API_ENDPOINT="${wizard_api_endpoint:-http://localhost:8080}"
+CRON_INTERVAL="${wizard_cron_interval:-15}"
+HOST_ID="${wizard_host_id:-fnOS}"
+
+# URL 安全检查
+API_ENDPOINT=$(sanitize_url "${API_ENDPOINT}") || {
+    log_msg "WARNING: API endpoint contains invalid characters, using default"
+    API_ENDPOINT="http://localhost:8080"
+}
+
+# 转换 cron 表达式
+CRON_SCHEDULE=$(interval_to_cron "${CRON_INTERVAL}")
+
+# 使用 jq 生成 settings.json（安全序列化）
+write_settings "${SETTINGS_FILE}" "${API_ENDPOINT}" "${CRON_SCHEDULE}" "${CRON_INTERVAL}" "${HOST_ID}"
+
+# 检查 smartctl 是否可用
+if ! command -v smartctl >/dev/null; then
+    log_msg "WARNING: smartctl not found, please install smartmontools"
+fi
+
+# 确保 collector 二进制有执行权限
+COLLECTOR_BIN="${TRIM_APPDEST}/bin/scrutiny-collector-metrics"
+if [ -f "${COLLECTOR_BIN}" ]; then
+    chmod +x "${COLLECTOR_BIN}"
+    log_msg "Collector binary permissions set"
+fi
+
+log_msg "Settings saved: api_endpoint=${API_ENDPOINT}, cron_schedule=${CRON_SCHEDULE}, host_id=${HOST_ID}"
+log_msg "Install callback completed"

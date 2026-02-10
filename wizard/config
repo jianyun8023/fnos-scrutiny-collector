@@ -1,0 +1,59 @@
+[
+    {
+        "stepTitle": "Scrutiny 配置",
+        "items": [
+            {
+                "type": "tips",
+                "helpText": "修改 Scrutiny Collector 的连接和采集配置。"
+            },
+            {
+                "type": "text",
+                "field": "wizard_api_endpoint",
+                "label": "Scrutiny API 地址",
+                "description": "Scrutiny Web 服务的 API 地址",
+                "rules": [
+                    {
+                        "required": true,
+                        "message": "请输入 Scrutiny API 地址"
+                    },
+                    {
+                        "pattern": "^https?://",
+                        "message": "地址必须以 http:// 或 https:// 开头"
+                    }
+                ]
+            },
+            {
+                "type": "text",
+                "field": "wizard_host_id",
+                "label": "Host ID",
+                "description": "当前设备的标识名，用于在 Scrutiny 面板中区分不同主机",
+                "rules": [
+                    {
+                        "required": true,
+                        "message": "请输入 Host ID"
+                    }
+                ]
+            },
+            {
+                "type": "select",
+                "field": "wizard_cron_interval",
+                "label": "采集间隔",
+                "description": "硬盘 S.M.A.R.T 数据采集频率",
+                "options": [
+                    { "label": "每 15 分钟", "value": "15" },
+                    { "label": "每 30 分钟", "value": "30" },
+                    { "label": "每 1 小时", "value": "60" },
+                    { "label": "每 6 小时", "value": "360" },
+                    { "label": "每 12 小时", "value": "720" },
+                    { "label": "每 24 小时", "value": "1440" }
+                ],
+                "rules": [
+                    {
+                        "required": true,
+                        "message": "请选择采集间隔"
+                    }
+                ]
+            }
+        ]
+    }
+]

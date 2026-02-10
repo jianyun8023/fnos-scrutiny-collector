@@ -1,0 +1,54 @@
+#!/bin/bash
+
+# Scrutiny Collector 更新回调脚本
+# 处理二进制权限和配置迁移
+
+source "$(dirname "$0")/_functions"
+
+LOG_FILE="${TRIM_PKGVAR}/info.log"
+SETTINGS_FILE="${TRIM_PKGVAR}/settings.json"
+COLLECTOR_BIN="${TRIM_APPDEST}/bin/scrutiny-collector-metrics"
+
+log_msg() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - [upgrade] $1" >> ${LOG_FILE}
+}
+
+# jq 检查
+require_jq
+
+log_msg "Upgrade callback started: ${TRIM_OLD_APPVER} -> ${TRIM_APPVER}"
+
+# 确保新版二进制有执行权限
+if [ -f "${COLLECTOR_BIN}" ]; then
+    chmod +x "${COLLECTOR_BIN}"
+    log_msg "Collector binary permissions set"
+fi
+
+# ── 配置迁移 ──
+migrate_config() {
+    local old_ver="${TRIM_OLD_APPVER}"
+
+    # 确保 settings.json 存在（兼容非常早期的版本）
+    if [ ! -f "${SETTINGS_FILE}" ]; then
+        log_msg "WARNING: settings.json not found, creating default"
+        mkdir -p "${TRIM_PKGVAR}"
+        write_settings "${SETTINGS_FILE}" "http://localhost:8080" "*/15 * * * *" "15" "fnOS"
+        return
+    fi
+
+    # 示例: 未来版本的迁移模板
+    # case "$old_ver" in
+    #     1.23.*)
+    #         # 从 1.23.x 升级：用 jq 添加新字段
+    #         jq '. + {new_field: "default"}' "${SETTINGS_FILE}" > "${SETTINGS_FILE}.tmp" \
+    #             && mv "${SETTINGS_FILE}.tmp" "${SETTINGS_FILE}"
+    #         log_msg "Migrated config from ${old_ver}"
+    #         ;;
+    # esac
+
+    log_msg "Config migration check completed"
+}
+
+migrate_config
+
+log_msg "Upgrade callback completed"

@@ -1,0 +1,13 @@
+appname               = starosdev.scrutiny.collector
+version               = 1.23.2
+display_name          = Scrutiny Collector
+desc                  = 硬盘 S.M.A.R.T 健康监控采集器，定时采集硬盘健康数据发送到 Scrutiny Web 服务
+platform              = arm
+source                = thirdparty
+maintainer            = Starosdev
+maintainer_url        = https://github.com/Starosdev/scrutiny
+distributor           = fnOS Community
+service_port          = 
+checkport             = false
+ctl_stop              = true
+os_min_version        = 0.9.0

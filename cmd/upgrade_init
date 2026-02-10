@@ -1,0 +1,3 @@
+#!/bin/bash
+# 更新前准备
+# 停止 cron 任务（系统会先调用 main stop）

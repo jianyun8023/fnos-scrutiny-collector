@@ -1,0 +1,4 @@
+*.fpk
+app/bin/
+fnpack
+.DS_Store

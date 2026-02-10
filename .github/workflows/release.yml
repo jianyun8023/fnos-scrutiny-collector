@@ -1,0 +1,89 @@
+name: Build and Release FPK
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      scrutiny_version:
+        description: "Scrutiny 版本号 (例如 1.23.2)"
+        required: true
+        default: "1.23.2"
+
+env:
+  APP_NAME: starosdev.scrutiny.collector
+  DISPLAY_NAME: Scrutiny Collector
+
+jobs:
+  build:
+    name: Build FPK (${{ matrix.platform }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: x86
+            collector_arch: amd64
+          - platform: arm
+            collector_arch: arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.scrutiny_version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "::notice::Scrutiny version: ${VERSION}"
+
+      # ── 基础 Action: 安装 fnpack ──
+      - name: Setup fnpack
+        uses: ./.github/actions/setup-fnpack
+
+      # ── 应用特定: 下载 Scrutiny Collector 二进制 ──
+      - name: Download Scrutiny Collector binary
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          DOWNLOAD_URL="https://github.com/Starosdev/scrutiny/releases/download/v${VERSION}/scrutiny-collector-metrics-linux-${{ matrix.collector_arch }}"
+          echo "Downloading: ${DOWNLOAD_URL}"
+          mkdir -p app/bin
+          curl -fsSL "${DOWNLOAD_URL}" -o app/bin/scrutiny-collector-metrics
+          chmod +x app/bin/scrutiny-collector-metrics
+
+      # ── 基础 Action: 构建 FPK 包 ──
+      - name: Build FPK
+        uses: ./.github/actions/build-fpk
+        with:
+          app-name: ${{ env.APP_NAME }}
+          version: ${{ steps.version.outputs.version }}
+          platform: ${{ matrix.platform }}
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      # ── 基础 Action: 创建 Release ──
+      - name: Release FPK
+        uses: ./.github/actions/release-fpk
+        with:
+          app-name: ${{ env.APP_NAME }}
+          version: ${{ steps.version.outputs.version }}
+          display-name: ${{ env.DISPLAY_NAME }}
+          description: "硬盘 S.M.A.R.T 健康监控采集器，定时采集硬盘健康数据发送到 Scrutiny Web 服务。"
+          upstream-repo: "https://github.com/Starosdev/scrutiny"
