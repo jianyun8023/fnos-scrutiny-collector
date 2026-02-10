@@ -10,6 +10,10 @@ on:
         description: "Scrutiny 版本号 (例如 1.23.2)"
         required: true
         default: "1.23.2"
+      create_release:
+        description: "是否创建 GitHub Release"
+        type: boolean
+        default: false
 
 env:
   APP_NAME: starosdev.scrutiny.collector
@@ -68,6 +72,7 @@ jobs:
     name: Create GitHub Release
     needs: build
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' || inputs.create_release == true
     permissions:
       contents: write
     steps:

@@ -55,5 +55,5 @@ jobs:
         run: |
           VERSION="${{ steps.upstream.outputs.tag }}"
           VERSION="${VERSION#v}"
-          gh workflow run release.yml -f scrutiny_version="${VERSION}"
+          gh workflow run release.yml -f scrutiny_version="${VERSION}" -f create_release=true
           echo "::notice::Triggered release workflow for version ${VERSION}"
